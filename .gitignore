@@ -1,0 +1,12 @@
+# Generated output
+*.json
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Large data files
+*.xlsx

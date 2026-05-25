@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache">
+<title>设备管理系统 | 点检·保养·维修·备件·台账</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--border:#334155;--text:#e2e8f0;--dim:#94a3b8;--red:#ef4444;--orange:#f59e0b;--green:#22c55e;--blue:#3b82f6;--purple:#8b5cf6;}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;background:var(--bg);color:var(--text);padding:20px;min-height:100vh}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.header h1{font-size:1.4rem}
+.header .sub{color:var(--dim);font-size:.8rem}
+.tabs{display:flex;gap:4px;margin-bottom:24px;flex-wrap:wrap;background:var(--card);border-radius:12px;padding:4px;border:1px solid var(--border)}
+.tab{padding:10px 20px;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:600;color:var(--dim);transition:.2s;border:none;background:none}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.tab.active{background:var(--blue);color:#fff}
+.content{display:none}
+.content.active{display:block}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.kpi .label{color:var(--dim);font-size:.75rem;margin-bottom:4px}
+.kpi .value{font-size:1.6rem;font-weight:700}
+.kpi .sub{font-size:.7rem;color:var(--dim)}
+.kpi.red .value{color:var(--red)} .kpi.orange .value{color:var(--orange)} .kpi.green .value{color:var(--green)}
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;margin-bottom:20px}
+.chart-box{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px}
+.chart-box.full{grid-column:1/-1}
+.chart-box h3{font-size:.85rem;color:var(--dim);margin-bottom:12px}
+.chart-box canvas{max-height:320px}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th{background:var(--card);color:var(--dim);padding:10px 12px;text-align:left;font-weight:600;border-bottom:2px solid var(--border);position:sticky;top:0}
+td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:hover td{background:rgba(59,130,246,.05)}
+.badge{padding:3px 10px;border-radius:12px;font-size:.7rem;font-weight:600}
+.badge-red{background:rgba(239,68,68,.15);color:var(--red)}
+.badge-orange{background:rgba(245,158,11,.15);color:var(--orange)}
+.badge-green{background:rgba(34,197,94,.15);color:var(--green)}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--blue)}
+.inspect-table td:first-child{font-weight:600;color:var(--blue)}
+.inspect-table td:nth-child(4){color:var(--red);font-weight:600}
+.detail-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.detail-card .title{font-weight:700;margin-bottom:8px}
+.detail-card .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.8rem}
+.detail-card .grid div{color:var(--dim)}
+.detail-card .grid div span{color:var(--text);font-weight:600}
+.scroll-table{max-height:500px;overflow-y:auto;border-radius:8px;border:1px solid var(--border)}
+.insight-box{background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px}
+.insight-box h3{color:var(--blue);font-size:.85rem;margin-bottom:8px}
+.insight-box p,.insight-box li{color:var(--dim);font-size:.8rem;line-height:1.6}
+.filter-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.filter-bar input,.filter-bar select{background:var(--card);color:var(--text);border:1px solid var(--border);padding:6px 10px;border-radius:6px;font-size:.8rem}
+@media(max-width:768px){.chart-grid{grid-template-columns:1fr}.kpi-grid{grid-template-columns:repeat(2,1fr)}.tabs{overflow-x:auto}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div><h1>🔧 设备管理系统</h1><div class="sub">点检 · 保养 · 维修 · 备件 · 台账 — 五模块闭环</div></div>
+  <span class="badge badge-blue" id="clock">🕐</span>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('ledger')">📋 设备台账</button>
+  <button class="tab" onclick="switchTab('analysis')">📊 异常分析</button>
+  <button class="tab" onclick="switchTab('workorder')">🔧 维修工单</button>
+  <button class="tab" onclick="switchTab('pm')">🛡️ 保养计划</button>
+  <button class="tab" onclick="switchTab('spareparts')">📦 备件管理</button>
+  <button class="tab" onclick="switchTab('inspection')">🔍 点检标准</button>
+</div>
+
+<!-- ==================== TAB 1: 设备台账 ==================== -->
+<div class="content active" id="tab-ledger">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="label">📋 在册设备</div><div class="value" id="l-total">--</div><div class="sub">台</div></div>
+    <div class="kpi red"><div class="label">🔴 异常总次数</div><div class="value" id="l-events">--</div><div class="sub">次 (2022-2024)</div></div>
+    <div class="kpi orange"><div class="label">💰 累计维修费用</div><div class="value" id="l-cost">--</div><div class="sub">元</div></div>
+    <div class="kpi"><div class="label">🔧 更换配件种类</div><div class="value" id="l-parts">--</div><div class="sub">种</div></div>
+    <div class="kpi green"><div class="label">✅ 正常运行</div><div class="value" id="l-normal">--</div><div class="sub">台</div></div>
+    <div class="kpi"><div class="label">📅 最后记录</div><div class="value" id="l-last" style="font-size:1.1rem">--</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <input type="text" placeholder="🔍 搜索设备编号..." oninput="filterLedger()" id="ledgerSearch">
+    <select onchange="filterLedger()" id="ledgerSort"><option value="events">按异常次数</option><option value="cost">按维修费用</option><option value="name">按设备编号</option></select>
+  </div>
+
+  <div class="scroll-table">
+    <table><thead><tr><th>设备编号</th><th>异常次数</th><th>维修费用(¥)</th><th>主要故障类型</th><th>常用配件</th><th>最后记录</th><th>操作</th></tr></thead>
+    <tbody id="ledgerBody"></tbody></table>
+  </div>
+  <div id="ledgerDetail" style="margin-top:16px;"></div>
+</div>
+
+<!-- ==================== TAB 2: 异常分析 ==================== -->
+<div class="content" id="tab-analysis">
+  <div class="kpi-grid">
+    <div class="kpi red"><div class="label">📊 异常总次数</div><div class="value" id="a-total">--</div></div>
+    <div class="kpi orange"><div class="label">⏱️ 总停机(h)</div><div class="value" id="a-downtime">--</div></div>
+    <div class="kpi"><div class="label">🔴 最高故障机台</div><div class="value" id="a-topm" style="font-size:1.2rem">--</div></div>
+    <div class="kpi"><div class="label">🏷️ 主要类别</div><div class="value" id="a-topc" style="font-size:1.2rem">--</div></div>
+  </div>
+  <div class="insight-box"><h3>🧠 AI 分析洞察</h3><p id="a-insight">加载中...</p></div>
+  <div class="chart-grid">
+    <div class="chart-box"><h3>📈 月度异常趋势</h3><canvas id="chartMonthly"></canvas></div>
+    <div class="chart-box"><h3>🍩 异常类别分布</h3><canvas id="chartCategory"></canvas></div>
+    <div class="chart-box"><h3>🔝 高故障机台 Top 15</h3><canvas id="chartMachines"></canvas></div>
+    <div class="chart-box"><h3>📊 Pareto 分析</h3><canvas id="chartPareto"></canvas></div>
+  </div>
+</div>
+
+<!-- ==================== TAB 3: 维修工单 ==================== -->
+<div class="content" id="tab-workorder">
+  <div class="kpi-grid">
+    <div class="kpi red"><div class="label">📝 工单总数</div><div class="value" id="w-total">--</div></div>
+    <div class="kpi green"><div class="label">✅ 已完成</div><div class="value" id="w-done">--</div></div>
+    <div class="kpi orange"><div class="label">⏳ 处理中</div><div class="value" id="w-inprogress">--</div></div>
+    <div class="kpi"><div class="label">⏱️ 平均耗时(h)</div><div class="value" id="w-avg">--</div></div>
+    <div class="kpi"><div class="label">👤 处理人</div><div class="value" id="w-handlers" style="font-size:1.1rem">--</div></div>
+  </div>
+  <div class="filter-bar">
+    <input type="text" placeholder="🔍 搜索机台/描述..." oninput="filterWorkOrders()" id="woSearch">
+    <select onchange="filterWorkOrders()" id="woCat"><option value="">全部类别</option></select>
+    <select onchange="filterWorkOrders()" id="woStatus"><option value="">全部状态</option><option>已完成</option><option>处理中</option></select>
+  </div>
+  <div class="scroll-table">
+    <table><thead><tr><th>工单号</th><th>机台</th><th>类别</th><th>开始时间</th><th>耗时(h)</th><th>描述</th><th>处理人</th><th>状态</th></tr></thead>
+    <tbody id="woBody"></tbody></table>
+  </div>
+</div>
+
+<!-- ==================== TAB 4: 保养计划 ==================== -->
+<div class="content" id="tab-pm">
+  <div class="kpi-grid">
+    <div class="kpi green"><div class="label">🛡️ 保养计划</div><div class="value" id="pm-plans">--</div><div class="sub">台设备</div></div>
+    <div class="kpi orange"><div class="label">📅 本周到期</div><div class="value" id="pm-thisweek">--</div><div class="sub">台</div></div>
+    <div class="kpi"><div class="label">🔄 周期类型</div><div class="value" id="pm-types" style="font-size:1rem">--</div></div>
+    <div class="kpi"><div class="label">🔧 需状态保养</div><div class="value" id="pm-condition" style="font-size:1.1rem">--</div><div class="sub">台 (基于异常频率)</div></div>
+  </div>
+  <div class="filter-bar">
+    <input type="text" placeholder="🔍 搜索机台..." oninput="filterPM()" id="pmSearch">
+    <select onchange="filterPM()" id="pmStatus"><option value="">全部状态</option><option>本周</option><option>计划中</option></select>
+  </div>
+  <div class="scroll-table">
+    <table><thead><tr><th>机台</th><th>设备类型</th><th>保养周期(天)</th><th>下次保养</th><th>保养项目</th><th>状态</th></tr></thead>
+    <tbody id="pmBody"></tbody></table>
+  </div>
+</div>
+
+<!-- ==================== TAB 5: 备件管理 ==================== -->
+<div class="content" id="tab-spareparts">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="label">📦 备件种类</div><div class="value" id="s-types">--</div></div>
+    <div class="kpi red"><div class="label">⚠️ 低库存</div><div class="value" id="s-low">--</div></div>
+    <div class="kpi orange"><div class="label">🔴 缺货</div><div class="value" id="s-out">--</div></div>
+    <div class="kpi"><div class="label">⭐ 关键备件</div><div class="value" id="s-critical">--</div></div>
+    <div class="kpi"><div class="label">🔗 关联机台</div><div class="value" id="s-machines" style="font-size:1rem">--</div></div>
+  </div>
+  <div class="filter-bar">
+    <input type="text" placeholder="🔍 搜索备件..." oninput="filterSpareParts()" id="spSearch">
+    <select onchange="filterSpareParts()" id="spCritical"><option value="">全部</option><option value="true">关键备件</option><option value="false">普通备件</option></select>
+  </div>
+  <div class="scroll-table">
+    <table><thead><tr><th>备件名称</th><th>使用次数</th><th>关联机台</th><th>安全库存</th><th>当前库存</th><th>关键件</th><th>状态</th></tr></thead>
+    <tbody id="spBody"></tbody></table>
+  </div>
+</div>
+
+<!-- ==================== TAB 6: 点检标准 ==================== -->
+<div class="content" id="tab-inspection">
+  <div class="insight-box">
+    <h3>📌 点检管理原则</h3>
+    <p>点检是设备管理的<strong>问题入口</strong>。核心三要素：① 标准清晰（检查部位+判断标准+检查方法）② 异常判定机制明确（量化阈值）③ 异常必须被接住——发现异常自动触发维修工单。</p>
+  </div>
+  <div id="inspectionContent"></div>
+</div>
+
+<div style="text-align:center;color:var(--dim);font-size:.7rem;padding-top:20px;border-top:1px solid var(--border);margin-top:20px">
+  设备管理系统 v2.0 · 点检→保养→维修→备件→台账 闭环 · Data from Fab A (2022-2024)
+</div>
+
+<script>
+// ========== DATA ==========
+const SYS = __SYS_DATA__;
+const ANOMALY = __ANOMALY_DATA__;
+
+// ========== Tab Switching ==========
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'analysis') initAnalysisCharts();
+}
+
+// Clock
+setInterval(() => document.getElementById('clock').textContent = '🕐 ' + new Date().toLocaleString('zh-CN'), 1000);
+
+// ========== TAB 1: 设备台账 ==========
+(function initLedger() {
+  const ledger = SYS.machine_ledger;
+  const machines = Object.keys(ledger);
+  let totalEvents = 0, totalCost = 0, totalParts = new Set();
+  machines.forEach(m => {
+    totalEvents += ledger[m].total_events;
+    totalCost += ledger[m].total_cost;
+    ledger[m].top_parts.forEach(p => totalParts.add(p[0]));
+  });
+  
+  document.getElementById('l-total').textContent = machines.length;
+  document.getElementById('l-events').textContent = totalEvents;
+  document.getElementById('l-cost').textContent = '¥' + totalCost.toLocaleString();
+  document.getElementById('l-parts').textContent = totalParts.size;
+  document.getElementById('l-normal').textContent = machines.length;
+  document.getElementById('l-last').textContent = '2024-11';
+
+  window._ledgerData = machines.map(m => ({name: m, ...ledger[m]}));
+  window._filterLedger = () => {
+    const search = (document.getElementById('ledgerSearch')?.value || '').toLowerCase();
+    const sort = document.getElementById('ledgerSort')?.value || 'events';
+    let data = [...window._ledgerData].filter(d => !search || d.name.toLowerCase().includes(search));
+    if (sort === 'events') data.sort((a, b) => b.total_events - a.total_events);
+    else if (sort === 'cost') data.sort((a, b) => b.total_cost - a.total_cost);
+    else data.sort((a, b) => a.name.localeCompare(b.name));
+    
+    document.getElementById('ledgerBody').innerHTML = data.map(d => `
+      <tr>
+        <td><strong>${d.name}</strong></td>
+        <td><span class="badge ${d.total_events > 20 ? 'badge-red' : d.total_events > 10 ? 'badge-orange' : 'badge-green'}">${d.total_events}</span></td>
+        <td>¥${d.total_cost.toLocaleString()}</td>
+        <td>${Object.entries(d.event_types).slice(0,3).map(([k,v]) => `<span class="badge badge-blue" style="margin:1px">${k}(${v})</span>`).join(' ')}</td>
+        <td style="font-size:.7rem">${d.top_parts.slice(0,3).map(([p,c]) => `${p}(${c})`).join(', ') || '-'}</td>
+        <td>${d.last_date || '-'}</td>
+        <td><button onclick="showLedgerDetail('${d.name}')" style="background:var(--blue);color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:.7rem">详情</button></td>
+      </tr>`).join('');
+    document.getElementById('ledgerDetail').innerHTML = '';
+  };
+  window._filterLedger();
+})();
+
+function filterLedger() { window._filterLedger && window._filterLedger(); }
+
+function showLedgerDetail(mach) {
+  const d = window._ledgerData.find(x => x.name === mach);
+  if (!d) return;
+  document.getElementById('ledgerDetail').innerHTML = `
+    <div class="detail-card">
+      <div class="title">📋 ${mach} 设备档案</div>
+      <div class="grid">
+        <div>异常总次数：<span>${d.total_events}</span></div>
+        <div>累计维修费用：<span>¥${d.total_cost.toLocaleString()}</span></div>
+        <div>最后记录：<span>${d.last_date || '-'}</span></div>
+        <div>主要处理人：<span>${d.top_handlers.map(([h,c]) => `${h}(${c}次)`).join(', ')}</span></div>
+        <div>故障类型：<span>${Object.entries(d.event_types).map(([k,v]) => `${k}:${v}`).join(' | ')}</span></div>
+        <div>常用配件：<span>${d.top_parts.map(([p,c]) => `${p}(${c})`).join(', ')}</span></div>
+      </div>
+    </div>`;
+}
+
+// ========== TAB 2: 异常分析 ==========
+let _chartsInit = false;
+function initAnalysisCharts() {
+  if (_chartsInit) return;
+  _chartsInit = true;
+  
+  const a = ANOMALY.summary;
+  document.getElementById('a-total').textContent = a.total_records?.toLocaleString() || '--';
+  document.getElementById('a-downtime').textContent = a.total_downtime_hours?.toLocaleString() || '--';
+  document.getElementById('a-topm').textContent = a.top_machine?.[0] || '--';
+  document.getElementById('a-topc').textContent = a.top_category?.[0] || '--';
+  document.getElementById('a-insight').innerHTML = ANOMALY.insight || '暂无分析洞察';
+  
+  const colors = ['#ef4444','#f59e0b','#3b82f6','#22c55e','#8b5cf6','#ec4899','#06b6d4','#f97316','#84cc16','#6366f1'];
+  
+  // Monthly trend
+  if (ANOMALY.monthly_trend?.labels?.length) {
+    const topCats = Object.keys(ANOMALY.categories || {}).slice(0,6);
+    new Chart(document.getElementById('chartMonthly'), {
+      type: 'bar', data: {
+        labels: ANOMALY.monthly_trend.labels,
+        datasets: topCats.map((cat,i) => ({
+          label: cat, data: ANOMALY.monthly_trend.categories?.[cat] || [],
+          backgroundColor: colors[i], borderWidth: 0
+        }))
+      },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 10 }, boxWidth: 10, padding: 6 } } },
+        scales: { x: { stacked: true, ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { color: '#1e293b' } },
+                  y: { stacked: true, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } } }
+      }
+    });
+  }
+  
+  // Category doughnut
+  const catE = Object.entries(ANOMALY.categories || {});
+  if (catE.length) {
+    new Chart(document.getElementById('chartCategory'), {
+      type: 'doughnut', data: { labels: catE.map(e=>e[0]), datasets: [{ data: catE.map(e=>e[1]), backgroundColor: colors, borderWidth: 2, borderColor: '#0f172a' }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { color: '#94a3b8', font: { size: 10 }, padding: 6, usePointStyle: true } } }
+      }
+    });
+  }
+  
+  // Machines bar
+  const machE = Object.entries(ANOMALY.machines || {}).slice(0,15);
+  if (machE.length) {
+    new Chart(document.getElementById('chartMachines'), {
+      type: 'bar', data: { labels: machE.map(e=>e[0]), datasets: [{ data: machE.map(e=>e[1]), backgroundColor: machE.map((_,i) => i<3?'#ef4444':i<6?'#f59e0b':'#3b82f6'), borderWidth:0 }] },
+      options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } }, y: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { display: false } } }
+      }
+    });
+  }
+  
+  // Pareto
+  const pVals = machE.map(e=>e[1]), pSum = pVals.reduce((a,b)=>a+b,0);
+  let cum = 0; const cumPct = pVals.map(v => { cum += v; return (cum/pSum*100); });
+  if (machE.length) {
+    new Chart(document.getElementById('chartPareto'), {
+      type: 'bar', data: {
+        labels: machE.map(e=>e[0]),
+        datasets: [
+          { label: '异常次数', data: pVals, backgroundColor: '#3b82f6', yAxisID: 'y', order: 1 },
+          { label: '累计占比(%)', data: cumPct, type: 'line', borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,.1)', fill: true, yAxisID: 'y1', order: 0, pointRadius: 1, borderWidth: 2 }
+        ]
+      },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 }, usePointStyle: true } } },
+        scales: {
+          x: { ticks: { color: '#94a3b8', font: { size: 8 }, maxRotation: 45 }, grid: { display: false } },
+          y: { type: 'linear', position: 'left', ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
+          y1: { type: 'linear', position: 'right', ticks: { color: '#ef4444', callback: v=>v+'%' }, grid: { drawOnChartArea: false }, min: 0, max: 100 }
+        }
+      }
+    });
+  }
+}
+
+// ========== TAB 3: 维修工单 ==========
+(function initWorkOrders() {
+  const wos = SYS.work_orders;
+  const done = wos.filter(w => w.status === '已完成').length;
+  const inprog = wos.filter(w => w.status === '处理中').length;
+  const durations = wos.map(w => parseFloat(w.duration_h) || 0).filter(d => d > 0);
+  const avgDur = durations.length ? (durations.reduce((a,b)=>a+b,0)/durations.length).toFixed(1) : '--';
+  
+  document.getElementById('w-total').textContent = SYS.work_orders_total;
+  document.getElementById('w-done').textContent = done;
+  document.getElementById('w-inprogress').textContent = inprog;
+  document.getElementById('w-avg').textContent = avgDur;
+  
+  const handlers = new Set(wos.map(w => w.handler).filter(Boolean));
+  document.getElementById('w-handlers').textContent = handlers.size + ' 人';
+  
+  // Category filter options
+  const cats = [...new Set(wos.map(w => w.category).filter(Boolean))].sort();
+  document.getElementById('woCat').innerHTML = '<option value="">全部类别</option>' + cats.map(c => `<option>${c}</option>`).join('');
+  
+  window._woData = wos;
+  window._filterWO = () => {
+    const search = (document.getElementById('woSearch')?.value || '').toLowerCase();
+    const cat = document.getElementById('woCat')?.value || '';
+    const status = document.getElementById('woStatus')?.value || '';
+    let data = wos.filter(w => {
+      if (search && !w.machine.toLowerCase().includes(search) && !w.description.toLowerCase().includes(search)) return false;
+      if (cat && w.category !== cat) return false;
+      if (status && w.status !== status) return false;
+      return true;
+    }).slice(0, 100);
+    
+    document.getElementById('woBody').innerHTML = data.map(w => `
+      <tr>
+        <td style="font-family:monospace;font-size:.75rem">${w.id}</td>
+        <td><strong>${w.machine}</strong></td>
+        <td><span class="badge badge-blue">${w.category}</span></td>
+        <td style="font-size:.75rem">${w.start_time?.slice(0,16) || '-'}</td>
+        <td>${w.duration_h}h</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.75rem" title="${w.description}">${w.description?.slice(0,30) || '-'}</td>
+        <td>${w.handler || '-'}</td>
+        <td><span class="badge ${w.status==='已完成'?'badge-green':'badge-orange'}">${w.status}</span></td>
+      </tr>`).join('');
+  };
+  window._filterWO();
+})();
+
+function filterWorkOrders() { window._filterWO && window._filterWO(); }
+
+// ========== TAB 4: 保养计划 ==========
+(function initPM() {
+  const plans = SYS.pm_plan;
+  const thisWeek = plans.filter(p => p.schedule[0]?.status === '本周').length;
+  const types = [...new Set(plans.map(p => p.type_name))];
+  
+  document.getElementById('pm-plans').textContent = plans.length;
+  document.getElementById('pm-thisweek').textContent = thisWeek;
+  document.getElementById('pm-types').textContent = types.join(' / ');
+  
+  // Condition-based PM: machines with high anomaly frequency
+  const conditionPM = plans.filter(p => {
+    const led = SYS.machine_ledger[p.machine];
+    return led && led.total_events > 10;
+  }).length;
+  document.getElementById('pm-condition').textContent = conditionPM + ' 台';
+  
+  window._pmData = plans;
+  window._filterPM = () => {
+    const search = (document.getElementById('pmSearch')?.value || '').toLowerCase();
+    const status = document.getElementById('pmStatus')?.value || '';
+    let data = plans.filter(p => {
+      if (search && !p.machine.toLowerCase().includes(search)) return false;
+      if (status && p.schedule[0]?.status !== status) return false;
+      return true;
+    });
+    
+    document.getElementById('pmBody').innerHTML = data.map(p => `
+      <tr>
+        <td><strong>${p.machine}</strong></td>
+        <td>${p.type_name}</td>
+        <td>${p.pm_interval_days} 天</td>
+        <td>${p.schedule[0]?.date || '-'}</td>
+        <td style="font-size:.7rem">${(p.schedule[0]?.items || []).slice(0,3).join(' · ')}${p.schedule[0]?.items?.length > 3 ? ' ...' : ''}</td>
+        <td><span class="badge ${p.schedule[0]?.status==='本周'?'badge-orange':'badge-green'}">${p.schedule[0]?.status || '-'}</span></td>
+      </tr>`).join('');
+  };
+  window._filterPM();
+})();
+
+function filterPM() { window._filterPM && window._filterPM(); }
+
+// ========== TAB 5: 备件管理 ==========
+(function initSpareParts() {
+  const sp = SYS.spare_parts;
+  const low = sp.filter(s => s.status.includes('低库存')).length;
+  const out = sp.filter(s => s.status.includes('缺货')).length;
+  const critical = sp.filter(s => s.is_critical).length;
+  const allMachines = new Set();
+  sp.forEach(s => s.machines.forEach(m => allMachines.add(m)));
+  
+  document.getElementById('s-types').textContent = sp.length;
+  document.getElementById('s-low').textContent = low;
+  document.getElementById('s-out').textContent = out;
+  document.getElementById('s-critical').textContent = critical;
+  document.getElementById('s-machines').textContent = allMachines.size + ' 台';
+  
+  window._spData = sp;
+  window._filterSP = () => {
+    const search = (document.getElementById('spSearch')?.value || '').toLowerCase();
+    const critical = document.getElementById('spCritical')?.value;
+    let data = sp.filter(s => {
+      if (search && !s.name.toLowerCase().includes(search)) return false;
+      if (critical === 'true' && !s.is_critical) return false;
+      if (critical === 'false' && s.is_critical) return false;
+      return true;
+    });
+    
+    document.getElementById('spBody').innerHTML = data.map(s => `
+      <tr>
+        <td><strong>${s.name}</strong></td>
+        <td>${s.usage_count}</td>
+        <td style="font-size:.7rem">${s.machines.slice(0,3).join(', ')}${s.machines.length > 3 ? ' +'+(s.machines.length-3) : ''}</td>
+        <td>${s.safety_stock}</td>
+        <td style="font-weight:700;color:${s.current_stock < s.safety_stock ? 'var(--red)' : 'var(--green)'}">${s.current_stock}</td>
+        <td>${s.is_critical ? '<span class="badge badge-red">⭐ 关键</span>' : '<span class="badge badge-blue">普通</span>'}</td>
+        <td><span class="badge ${s.status.includes('正常')?'badge-green':s.status.includes('低库存')?'badge-orange':'badge-red'}">${s.status}</span></td>
+      </tr>`).join('');
+  };
+  window._filterSP();
+})();
+
+function filterSpareParts() { window._filterSP && window._filterSP(); }
+
+// ========== TAB 6: 点检标准 ==========
+(function initInspection() {
+  const insp = SYS.inspection_standards;
+  document.getElementById('inspectionContent').innerHTML = insp.map(i => `
+    <div class="detail-card">
+      <div class="title">🔍 ${i.equipment_type} <span class="badge badge-blue" style="margin-left:8px">${i.frequency}</span></div>
+      <table class="inspect-table"><thead><tr><th>检查项目</th><th>检查方法</th><th>标准值</th><th>异常阈值 ⚠️</th></tr></thead>
+      <tbody>${i.check_items.map(c => `
+        <tr><td>${c.item}</td><td>${c.method}</td><td>${c.standard}</td><td>${c.abnormal_threshold}</td></tr>
+      `).join('')}</tbody></table>
+    </div>
+  `).join('');
+})();
+
+</script>
+</body>
+</html>
